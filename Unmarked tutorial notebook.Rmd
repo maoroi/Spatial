@@ -1,0 +1,126 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+**Beginning of actual file:**
+The code here is based on the "Modeling and mapping species distributions" tutorial by Richard Chandler (2019): _https://cran.r-project.org/web/packages/unmarked/vignettes/spp-dist.pdf_
+
+First we load the crossbill data, which contains the detection/non-detection data and covariates.
+The dataset actually contains data from multiple years, but we are only going to analyze data from
+the first year, 1999. A multi-year analysis of occupancy dynamics could be accomplished using the
+colext function, and in addition to mapping occurrence probability, it would be possible to also map
+colonization and extinction probabilities. The following commands format the data.
+
+```{r}
+data(crossbill)
+umf <- unmarkedFrameOccu(y=as.matrix(crossbill[,c("det991", "det992", "det993")]), siteCovs=crossbill[,c("ele", "forest")],
+                         obsCovs=list(date=crossbill[,c("date991", "date992", "date993")]))
+sc <- scale(siteCovs(umf))
+siteCovs(umf) <- sc
+```
+Notice that the site covariates, elevation and forest, were standardized using the scale function.
+Standardization isn’t always necessary, but it can make it easier to find the maximum likelihood
+estimates. When standardizing covariates and then making predictions, it is important to retain the
+original sample mean and standard deviation. The reason for this is explained below.
+
+Fitting a model is now straight-forward. In many cases, we would fit several models corresponding
+to competing hypotheses, but for simplicity, we stick with this single model.
+
+```{r}
+(fm.occu <- occu(~date ~ele + I(ele^2) + forest, umf))
+```
+
+Now that we have our fitted model, we can use it to predict occurrence probability at each pixel
+in the Swiss landscape. The Switzerland dataset contains country-wide data. There are many ways
+to display it—here is an example of mapping elevation using the levelplot function in the lattice
+package (Sarkar, 2008).
+
+```{r}
+data(Switzerland)
+print(levelplot(elevation ~ x + y, Switzerland, aspect="iso", xlab="Easting (m)", ylab="Northing (m)",
+                col.regions=terrain.colors(100)))
+```
+
+The raster package (van Etten, 2012) provides another alternative. Here we create two raster
+objects and specify the coordinate system.
+
+```{r}
+library(raster)
+elevation <- rasterFromXYZ(Switzerland[,c("x","y","elevation")],
+                           crs="+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1 +x_0=600000 +y_0=200000 +ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs")
+forest <- rasterFromXYZ(Switzerland[,c("x","y","forest")],
+                        crs="+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1 +x_0=600000 +y_0=200000 +ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs")
+```
+
+Since we standardized the covariates during the model fitting process, we need to transform the
+country-wide data using the same values. Note, we don’t want to use the mean and SD of the rasters
+themselves, we want to use the mean and SD of the original covariates used to fit the models, which
+are stored as attributes of the sc object. The following commands display the original means and
+SDs and then transform the rasters and join them in a raster “stack.”
+
+```{r}
+attr(sc, "scaled:center")
+# ele forest
+# 1189.32584 34.74532
+attr(sc, "scaled:scale")
+# ele forest
+# 640.71471 27.67431
+ele.s <- (elevation-1189)/640
+forest.s <- (forest-34.7)/27.7
+ef <- stack(ele.s, forest.s)
+names(ef) <- c("ele", "forest")
+plot(ef, col=terrain.colors(100))
+```
+
+It is important to assign names that exactly match the covariate names used to fit the model.
+This is required by the predict function as demonstrated later. The predict function is useful for
+computing spatially-referenced model predictions, standard errors, and confidence intervals, but it is
+computationally demanding when there are many pixels in the raster. 
+
+```{r}
+(beta <- coef(fm.occu, type="state"))
+#  psi(Int) psi(ele) psi(I(ele^2)) psi(forest)
+#  0.4638233 1.2276426 -1.3327186 0.6544976
+logit.psi <- beta[1] + beta[2]*ele.s + beta[3]*ele.s^2 + beta[4]*forest.s
+psi <- exp(logit.psi) / (1 + exp(logit.psi))
+```
+
+Thus, if measures of uncertainty are not required, the following code can be used to quickly produce a 
+species distribution map:
+```{r}
+plot(psi, col=terrain.colors(100))
+print(spplot(psi, col.regions=terrain.colors(100)))
+```
+
+As of version 0.9-6, the predict method in unmarked can make predictions using an object of
+class RasterStack from the raster package. As mentioned previously, the rasters must be named,
+perhaps by using the names(someraster) <- somename method. The object returned by predict is
+another raster stack with rasters for the expected values of the parameter of interest, the standard 
+errors, and the upper and lower confidence intervals. The following example is very slow because
+there are many thousands of pixels in the raster. The resulting map is shown:
+```{r}
+E.psi <- predict(fm.occu, type="state", newdata=ef)
+plot(E.psi, axes=FALSE, col=terrain.colors(100))
+
+```
+
+**NOTE:** Users should be cautious when predicting from models that have categorical predictor variables,
+i.e. factors. The raster package does not have advanced methods for handling factors, and thus
+it is not easy to automatically create dummy variables from them as can typically be done using
+model.matrix. The safest option is to create the dummy variables manually before fitting the models,
+and to use the same variables as rasters for prediction.
