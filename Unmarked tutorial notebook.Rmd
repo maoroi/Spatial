@@ -50,14 +50,20 @@ in the Swiss landscape. The Switzerland dataset contains country-wide data. Ther
 to display it—here is an example of mapping elevation using the levelplot function in the lattice
 package (Sarkar, 2008).
 
+> Sarkar, D., 2008. Lattice: Multivariate Data Visualization with R. Springer, New York. ISBN
+978-0-387-75968-5.
+
 ```{r}
 data(Switzerland)
 print(levelplot(elevation ~ x + y, Switzerland, aspect="iso", xlab="Easting (m)", ylab="Northing (m)",
                 col.regions=terrain.colors(100)))
 ```
 
-The raster package (van Etten, 2012) provides another alternative. Here we create two raster
-objects and specify the coordinate system.
+The raster package (Hijmans, 2019) provides another alternative. Here we create two raster objects 
+and specify the coordinate system.
+
+> Hijmans, R. J., 2019. raster: Geographic Data Analysis and Modeling. R package version 3.0-7.
+  https://CRAN.R-project.org/package=raster
 
 ```{r}
 library(raster)
@@ -124,3 +130,77 @@ i.e. factors. The raster package does not have advanced methods for handling fac
 it is not easy to automatically create dummy variables from them as can typically be done using
 model.matrix. The safest option is to create the dummy variables manually before fitting the models,
 and to use the same variables as rasters for prediction.
+
+**Mapping Population Density**
+
+In this example, we create a distribution map for the Island Scrub-Jay (Aphelocoma insularis),
+which is restricted to Santa Cruz Island, California. To do so, we fit the hierarchical distance sampling
+model of Royle et al. (2004), which allows for the estimation of abundance in each of the 300 × 300m
+pixels representing the island. The data were collected 307, 300-m radius point count (or “point
+transect”) surveyed during the Fall of 2008.
+
+> Royle, J. A., D. K. Dawson, and S. Bates, 2004. Modeling abundance effects in distance sampling.
+_Ecology_ *85*:1591–1597.
+
+Although we are fitting a model of population density, the steps of the analysis closely mirror
+those shown in the previous section. First, we format the data and fit a model, then we format the
+island-wide covariates and make predictions. The three covariates thought to influence jay abundance
+are elevation, forest cover, and chaparral cover. We also include the area of the survey plots in the 
+analysis so that we can make predictions for regions of any area. Here is the code to format the data and 
+fit the model.
+
+```{r}
+data(issj)
+covs <- scale(issj[,c("elevation", "forest", "chaparral")])
+area <- pi*300^2 / 10000
+jayumf <- unmarkedFrameDS(y=as.matrix(issj[,1:3]), siteCovs=data.frame(covs, area), dist.breaks=c(0,100,200,300), 
+                          unitsIn="m", survey="point")
+
+fm1 <- distsamp(~chaparral ~chaparral + elevation + offset(log(area)), jayumf, keyfun="halfnorm", output="abund",
+                starts=c(-2.8,1,0,4.5,0))
+fm1
+```
+
+Remarks: 1) The distance data were binned into 3 distance classes. 2) We used output="abund"
+even though, by specifying the offset, we effectively modeled population density. As stated previously,
+this allows us to make predictions of abundance for regions of arbitrary size.
+
+The next thing to do is to format the raster data. For details, see the previous section—the
+process is the same, except that we need a raster for “area”, the size of each pixel in the raster data.
+This is necessary because the survey plots were larger than the pixels for which we want predictions
+of abundance.
+
+```{r}
+data(cruz)
+elev <- rasterFromXYZ(cruz[,c("x","y","elevation")], crs="+proj=utm +zone=11 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+forest <- rasterFromXYZ(cruz[,c("x","y","forest")], crs="+proj=utm +zone=11 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+chap <- rasterFromXYZ(cruz[,c("x","y","chaparral")], crs="+proj=utm +zone=11 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+area.raster <- chap
+values(area.raster) <- 300*300/10000 # area of a grid pixel
+attr(covs, "scaled:center")
+# elevation    forest     chaparral
+# 202.0023616  0.0673357  0.2703592
+attr(covs, "scaled:scale")
+# elevation    forest     chaparral
+# 124.8818069  0.1368199  0.2338295
+elev.s <- (elev-202)/125
+forest.s <- (forest-0.0673)/0.137
+chap.s <- (chap-0.270)/0.234
+habitat <- stack(elev.s, forest.s, chap.s, area.raster)
+names(habitat) <- c("elevation", "forest", "chaparral", "area")
+```
+
+Now, when we use predict, it will return the expected number of jays in each pixel along with
+the standard errors and the 95% confidence intervals. We could sum these up to obtain an estimate
+of total population size. Sillett et al. (In press) did this and used the parametric boostrap to estimate
+the variance of total population size.
+
+> Sillett, S., R. Chandler, J. Royle, M. Kery, and S. Morrison, In press. Hierarchical distance sampling
+models to estimate population size and habitat-specific abundance of an island endemic. _Ecological
+Applications_.
+
+```{r}
+E <- predict(fm1, type="state", newdata=habitat)
+plot(E, axes=FALSE, col=terrain.colors(100))
+```
+

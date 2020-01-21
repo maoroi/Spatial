@@ -49,3 +49,40 @@ print(spplot(psi, col.regions=terrain.colors(100)))
 
 E.psi <- predict(fm.occu, type="state", newdata=ef)
 plot(E.psi, axes=FALSE, col=terrain.colors(100))
+
+
+## Mapping Population Density
+data(issj)
+covs <- scale(issj[,c("elevation", "forest", "chaparral")])
+area <- pi*300^2 / 10000
+jayumf <- unmarkedFrameDS(y=as.matrix(issj[,1:3]), siteCovs=data.frame(covs, area), dist.breaks=c(0,100,200,300), 
+                          unitsIn="m", survey="point")
+fm1 <- distsamp(~chaparral ~chaparral + elevation + offset(log(area)), jayumf, keyfun="halfnorm", output="abund",
+                starts=c(-2.8,1,0,4.5,0))
+
+# format the raster data
+data(cruz)
+elev <- rasterFromXYZ(cruz[,c("x","y","elevation")], crs="+proj=utm +zone=11 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+forest <- rasterFromXYZ(cruz[,c("x","y","forest")], crs="+proj=utm +zone=11 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+chap <- rasterFromXYZ(cruz[,c("x","y","chaparral")], crs="+proj=utm +zone=11 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+area.raster <- chap
+values(area.raster) <- 300*300/10000 # area of a grid pixel
+attr(covs, "scaled:center")
+# elevation    forest     chaparral
+# 202.0023616  0.0673357  0.2703592
+attr(covs, "scaled:scale")
+# elevation    forest     chaparral
+# 124.8818069  0.1368199  0.2338295
+elev.s <- (elev-202)/125
+forest.s <- (forest-0.0673)/0.137
+chap.s <- (chap-0.270)/0.234
+habitat <- stack(elev.s, forest.s, chap.s, area.raster)
+names(habitat) <- c("elevation", "forest", "chaparral", "area")
+
+E <- predict(fm1, type="state", newdata=habitat)
+# doing row 1000 of 5625
+# doing row 2000 of 5625
+# doing row 3000 of 5625
+# doing row 4000 of 5625
+# doing row 5000 of 5625
+plot(E, axes=FALSE, col=terrain.colors(100))
