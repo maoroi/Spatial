@@ -11,14 +11,14 @@ library(here)
 
 # 1. Read in shape files, slightly process for reducing size and save
 mammals <- st_read(paste0(here(),'/TERRESTRIAL_MAMMALS_20200117/TERRESTRIAL_MAMMALS.shp'))
-beep(2)      # shout when you're done
+beep(3)      # shout when you're done
 # reproducible alternative to: "C:/Users/Roi Maor/Desktop/Ch 4 - Environmental correlates/Workspace/Spatial/TERRESTRIAL_MAMMALS/TERRESTRIAL_MAMMALS.shp")
 
 # Simplify the polygons to reduce the size of the object/file. This may take a few moments but the size of the 
 # object (in the R environment) changes from 906Mb to <10 Mb (with dTolerance = 5), which is much easier to handle.
 mammals_simple <- mammals %>% 
-    st_simplify(dTolerance = 5)
-beep(2)                      
+    st_simplify(dTolerance = 0.01)
+    beep(3)                      
 
 mammals_simple <- mammals_simple %>% 
     select(binomial, family, order_, presence, legend, category) # 'code' in 2017 data changed to 'category' in 2019
@@ -36,6 +36,7 @@ rm(list = c("mammals", "mammals_simple", "file_name"))
 # 2. 
 file_name <- paste0(here::here(), "/iucn_mammal_distributions.gpkg")
 mammals <- st_read(file_name)
+beep(3)
 
 mammals %>%
     st_set_geometry(NULL) %>%
@@ -54,22 +55,60 @@ africa_map <- rnaturalearth::ne_countries(continent = "africa",
     plot(st_geometry(africa_map))
 }
 
-africa_grid <- st_make_grid(africa_map,
-                            what = "polygons",
-                            cellsize = 0.75,
+africa_grid <- st_make_grid(africa_map, 
+                            what = "polygons", 
+                            cellsize = 1, 
                             square = F) %>% 
     st_sf() %>% 
     mutate(grid_id = row_number())
-# although coordinates are longitude/latitude, st_intersection assumes that they are planar
+# although coordinates are longitude/latitude, st_relate_pattern assumes that they are planar
 
 africa_grid_clipped <- st_intersection(africa_grid, africa_map)
-
-{
-    par(mar = c(0, 0, 0, 0))
-    plot(africa_map$geometry, reset = F, axes = F)
-    plot(st_geometry(africa_grid_clipped), color = "white",
-         add = T, border = rgb(0, 0, 0, 0.2))
-}
 # although coordinates are longitude/latitude, st_intersection assumes that they are planar
 # Warning message:
-# attribute variables are assumed to be spatially constant throughout all geometries 
+# attribute variables are assumed to be spatially constant throughout all geometries
+{
+    # for whatever reason, this plot does not work like in the example
+    par(mar = c(0, 0, 0, 0))
+    plot(africa_map, reset = F, axes = F)
+    plot(st_geometry(africa_grid_clipped), col = alpha("white", alpha=0.2), add = T, border = rgb(0, 0, 0, 0.2))
+}
+
+# Only keep population ranges within Africa
+africa_mammals <- st_intersection(mammals, africa_map) %>% 
+    group_by(binomial) %>% 
+    summarize()
+{
+    par(mar = c(0, 0, 0, 0))
+    plot(st_geometry(africa_mammals))
+}
+
+# Combine ranges with the grid 
+ #This may take a few minutes
+species_per_cell <- africa_grid_clipped %>% 
+    st_join(africa_mammals)
+
+species_per_cell_sums <- species_per_cell %>% 
+    group_by(grid_id) %>% 
+    summarize(species_n = n())
+
+# standard plot
+plot(species_per_cell_sums["species_n"])
+
+# quick and easy (NOT) ggplot
+african_mammals_map <- ggplot() +
+    geom_sf(data = species_per_cell_sums,
+            aes(fill = species_n),
+            size = 0) +
+    scale_fill_gradient2(name = "Number of\nSpecies",
+                         low = "#004529",
+                         mid = "#f7fcb9",
+                         high = "#7f0000",
+                         midpoint = max(species_per_cell_sums$species_n)/2) +
+    geom_sf(data = africa_map, fill = NA) +
+    labs(title = "Mammal Species in Africa") +
+    theme_void() +
+    theme(legend.position = c(0.1, 0.1),
+          legend.justification = c(0, 0),
+          plot.title = element_text(hjust = .5))
+african_mammals_map
