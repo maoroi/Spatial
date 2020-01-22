@@ -57,7 +57,7 @@ africa_map <- rnaturalearth::ne_countries(continent = "africa",
 
 africa_grid <- st_make_grid(africa_map, 
                             what = "polygons", 
-                            cellsize = 1, 
+                            cellsize = 0.8, 
                             square = F) %>% 
     st_sf() %>% 
     mutate(grid_id = row_number())
@@ -71,7 +71,7 @@ africa_grid_clipped <- st_intersection(africa_grid, africa_map)
     # for whatever reason, this plot does not work like in the example
     par(mar = c(0, 0, 0, 0))
     plot(africa_map, reset = F, axes = F)
-    plot(st_geometry(africa_grid_clipped), col = alpha("white", alpha=0.2), add = T, border = rgb(0, 0, 0, 0.2))
+    plot(st_geometry(africa_grid_clipped), add = T, border = rgb(0, 0, 0, 0.2))
 }
 
 # Only keep population ranges within Africa
@@ -91,24 +91,18 @@ species_per_cell <- africa_grid_clipped %>%
 species_per_cell_sums <- species_per_cell %>% 
     group_by(grid_id) %>% 
     summarize(species_n = n())
+beep(8)
 
 # standard plot
 plot(species_per_cell_sums["species_n"])
 
 # quick and easy (NOT) ggplot
 african_mammals_map <- ggplot() +
-    geom_sf(data = species_per_cell_sums,
-            aes(fill = species_n),
-            size = 0) +
-    scale_fill_gradient2(name = "Number of\nSpecies",
-                         low = "#004529",
-                         mid = "#f7fcb9",
-                         high = "#7f0000",
+    geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col='grey20') +
+    scale_fill_gradient2(name = "Number of\nSpecies", low = "#004529", mid = "#f7fcb9", high = "#7f0000",
                          midpoint = max(species_per_cell_sums$species_n)/2) +
-    geom_sf(data = africa_map, fill = NA) +
+    #geom_sf(data = africa_map, fill = NA) +
     labs(title = "Mammal Species in Africa") +
     theme_void() +
-    theme(legend.position = c(0.1, 0.1),
-          legend.justification = c(0, 0),
-          plot.title = element_text(hjust = .5))
+    theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), plot.title = element_text(hjust = .5))
 african_mammals_map
