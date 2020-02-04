@@ -31,12 +31,16 @@ mammals_simple <- mammals_simple %>%
 file_name <- paste0(here::here(), "/iucn_mammal_distributions.gpkg")
 st_write(mammals_simple, file_name)
 
-rm(list = c("mammals", "mammals_simple", "file_name"))
+rm(mammals, mammals_simple, file_name)
 
 # 2. 
 file_name <- paste0(here::here(), "/iucn_mammal_distributions.gpkg")
 mammals <- st_read(file_name)
 beep(3)
+
+# read taxonomy and trait data
+tax <- read.csv(file='C:/Users/Roi Maor/Desktop/New Mam Phylo/MamTax2018.csv')
+dat <- read.csv(file='C:/Users/Roi Maor/Desktop/Ch 4 - Environmental correlates/MCMCglmm/Fulldata18SEP.csv') # 1421 species
 
 mammals %>%
     st_set_geometry(NULL) %>%
@@ -57,7 +61,7 @@ africa_map <- rnaturalearth::ne_countries(continent = "africa",
 
 africa_grid <- st_make_grid(africa_map, 
                             what = "polygons", 
-                            cellsize = 0.8, 
+                            cellsize = 0.5, 
                             square = F) %>% 
     st_sf() %>% 
     mutate(grid_id = row_number())
@@ -71,16 +75,16 @@ africa_grid_clipped <- st_intersection(africa_grid, africa_map)
     # for whatever reason, this plot does not work like in the example
     par(mar = c(0, 0, 0, 0))
     plot(africa_map, reset = F, axes = F)
-    plot(st_geometry(africa_grid_clipped), add = T, border = rgb(0, 0, 0, 0.2))
+    plot(st_geometry(africa_grid_clipped), add = T, border = 'white') # rgb(0, 0, 0, 0.2))
 }
 
 # Only keep population ranges within Africa
-africa_mammals <- st_intersection(mammals, africa_map) %>% 
+africa_mammals <- st_intersection(mammals_extant, africa_map) %>% 
     group_by(binomial) %>% 
     summarize()
 {
     par(mar = c(0, 0, 0, 0))
-    plot(st_geometry(africa_mammals))
+    plot(st_geometry(africa_mammals)) # spaghetti bowl of all ranges
 }
 
 # Combine ranges with the grid 
@@ -97,12 +101,17 @@ beep(8)
 plot(species_per_cell_sums["species_n"])
 
 # quick and easy (NOT) ggplot
+png(filename = 'africa.png', width = 10, height = 7, units = "in", bg = "white", pointsize = 36, res = 600)
 african_mammals_map <- ggplot() +
-    geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col='grey20') +
-    scale_fill_gradient2(name = "Number of\nSpecies", low = "#004529", mid = "#f7fcb9", high = "#7f0000",
+    geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col=NA) +
+    scale_fill_gradient2(name = "Number of\nSpecies", low = "white", mid = "dodgerblue2", high = "red", #low = "#004529", mid = "#f7fcb9", high = "#7f0000",
                          midpoint = max(species_per_cell_sums$species_n)/2) +
-    #geom_sf(data = africa_map, fill = NA) +
+    geom_sf(data = africa_map, fill = NA) +
     labs(title = "Mammal Species in Africa") +
     theme_void() +
-    theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), plot.title = element_text(hjust = .5))
+    theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), legend.key.size = unit(0.5, units="in"), 
+          plot.title = element_text(hjust = .5))
+
+
 african_mammals_map
+dev.off()
