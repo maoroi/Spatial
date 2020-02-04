@@ -6,6 +6,7 @@ library(tidyverse)
 library(sf)
 library(rnaturalearth)
 library(rgeos)
+library(gridExtra)
 library(beepr)
 library(here)
 
@@ -39,7 +40,10 @@ mammals <- st_read(file_name)
 beep(3)
 
 # read taxonomy and trait data
-tax <- read.csv(file='C:/Users/Roi Maor/Desktop/New Mam Phylo/MamTax2018.csv')
+path <- 'C:/Users/Roi Maor/Desktop/New Mam Phylo'
+tax <- read.csv(file=paste0(path,'/New taxonomy/MamTax2018.csv'))
+phylos <- readLines(paste0(path,'/MamPhy_fullPosterior_BDvr_DNAonly_4098sp_topoFree_NDexp_all10k_v2_nexus.trees'), n = 4500)
+phylo <- write.nexus(phylos, file="first100.nex")
 dat <- read.csv(file='C:/Users/Roi Maor/Desktop/Ch 4 - Environmental correlates/MCMCglmm/Fulldata18SEP.csv') # 1421 species
 
 mammals %>%
@@ -50,6 +54,7 @@ mammals %>%
 mammals_extant <- mammals %>% 
     filter(presence %in% c(1,2,3))
 
+# map of Africa from https://www.naturalearthdata.com
 africa_map <- rnaturalearth::ne_countries(continent = "africa",
                                           returnclass = "sf") %>%
     st_set_precision(1e9) %>%
@@ -101,10 +106,10 @@ beep(8)
 plot(species_per_cell_sums["species_n"])
 
 # quick and easy (NOT) ggplot
-png(filename = 'africa.png', width = 10, height = 7, units = "in", bg = "white", pointsize = 36, res = 600)
-african_mammals_map <- ggplot() +
+png(filename = 'africa.png', width = 10, height = 20, units = "in", bg = "white", pointsize = 36, res = 600)
+noct_mammals_map <- ggplot() +
     geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col=NA) +
-    scale_fill_gradient2(name = "Number of\nSpecies", low = "white", mid = "dodgerblue2", high = "red", #low = "#004529", mid = "#f7fcb9", high = "#7f0000",
+    scale_fill_gradient2(name = "Number of\nSpecies", low = "white", mid = "dodgerblue2", high = "black", #low = "#004529", mid = "#f7fcb9", high = "#7f0000",
                          midpoint = max(species_per_cell_sums$species_n)/2) +
     geom_sf(data = africa_map, fill = NA) +
     labs(title = "Mammal Species in Africa") +
@@ -112,6 +117,35 @@ african_mammals_map <- ggplot() +
     theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), legend.key.size = unit(0.5, units="in"), 
           plot.title = element_text(hjust = .5))
 
+cath_mammals_map <- ggplot() +
+    geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col=NA) +
+    scale_fill_gradient2(name = "Number of\nSpecies", low = "white", mid = "#22dd11", high = "black", #low = "#004529", mid = "#f7fcb9", high = "#7f0000",
+                         midpoint = max(species_per_cell_sums$species_n)/2) +
+    geom_sf(data = africa_map, fill = NA) +
+    labs(title = "Mammal Species in Africa") +
+    theme_void() +
+    theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), legend.key.size = unit(0.5, units="in"), 
+          plot.title = element_text(hjust = .5))
 
-african_mammals_map
+diur_mammals_map <- ggplot() +
+    geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col=NA) +
+    scale_fill_gradient2(name = "Number of\nSpecies", low = "white", mid = "goldenrod2", high = "black", #low = "#004529", mid = "#f7fcb9", high = "#7f0000",
+                         midpoint = max(species_per_cell_sums$species_n)/2) +
+    geom_sf(data = africa_map, fill = NA) +
+    labs(title = "Mammal Species in Africa") +
+    theme_void() +
+    theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), legend.key.size = unit(0.5, units="in"), 
+          plot.title = element_text(hjust = .5))
+
+crep_mammals_map <- ggplot() +
+    geom_sf(data = species_per_cell_sums, aes(fill = species_n), size = 0, col=NA) +
+    scale_fill_gradient2(name = "Number of\nSpecies", low = "white", mid = "grey50", high = "black", #low = "#004529", mid = "#f7fcb9", high = "#7f0000",
+                         midpoint = max(species_per_cell_sums$species_n)/2) +
+    geom_sf(data = africa_map, fill = NA) +
+    labs(title = "Mammal Species in Africa") +
+    theme_void() +
+    theme(legend.position = c(0.1, 0.1), legend.justification = c(0, 0), legend.key.size = unit(0.5, units="in"), 
+          plot.title = element_text(hjust = .5))
+
+grid.arrange(noct_mammals_map , cath_mammals_map , diur_mammals_map, crep_mammals_map, ncol = 1)
 dev.off()
